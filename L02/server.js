@@ -15,9 +15,9 @@ const __dirname = path.dirname(__filename);
 app.use(express.static(path.resolve(process.cwd(), './public')));
 
 // OpenAI API configuration
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+//const openai = new OpenAI({
+ //   apiKey: process.env.OPENAI_API_KEY,
+//});
 
 // Default route to serve index.html for any undefined routes
 app.get('*', (req, res) => {
