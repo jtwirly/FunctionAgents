@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html data-bs-theme="dark">
+  <head>
+    <title>Managing Assistants MIT Mark 1</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <style src="styles.css"></style>
+
+    <script>
+      let state = {
+        chatgpt:false,
+        assistant_id: "",
+        assistant_name: "",
+        dir_path: "",
+        news_path: "",
+        thread_id: "",
+        user_message: "",
+        run_id: "",
+        run_status: "",
+        vector_store_id: "",
+        tools:[],
+        parameters: []
+      };
+
+      async function get_data_from_elements() {
+        for (let key in state) {
+          if (document.getElementById(key) != null) {
+            state[key] = document.getElementById(key).value;
+          }
+        }
+        console.log(`getting data from elements: ${JSON.stringify(state)}`);
+      }
+
+      function write_data_to_elements(response) {
+        for (let key in response) {
+          if (document.getElementById(key) != null) {
+            document.getElementById(key).value = response[key];
+          }
+        }
+        console.log(`writing data to elements: ${JSON.stringify(state)}`);
+      }
+
+      function write_to_div(route, message) {
+        // Ensure response is a valid array;
+        if (!Array.isArray(message)) {
+          let responseDiv = document.getElementById("response");
+          responseDiv.innerHTML = JSON.stringify(message);
+          return;
+        }
+
+        // Select the target div
+        let responseDiv = document.getElementById("response");
+        if (!responseDiv) {
+          console.error("No div with id 'response' found.");
+          return;
+        }
+
+        // Clear previous contents
+        responseDiv.innerHTML = "";
+
+        // Iterate through each object in the array
+        message.forEach((item) => {
+          // Create a new span element for each item
+          var span = document.createElement("span");
+          span.style.color = "black"; // Default color
+          // check if item.content or item.function
+          let matches = [];
+          if ("content" in item) {
+            span.textContent = item.content;
+            // check for ``` that indicates code block
+            if (item.content.includes("```")) {
+              const regex = /```([^```]+)```/g;
+
+              // Find matches
+
+              let match;
+              while ((match = regex.exec(span.textContent)) !== null) {
+                matches.push(match[1].trim());
+              }
+
+              // Insert extracted text into the div
+              const outputDiv = document.getElementById("json_output");
+              outputDiv.textContent = matches.join("\n\n");
+            }
+            // remove text between ``` from the content
+            span.textContent = span.textContent.replace(matches, "");
+            span.textContent = span.textContent.replace("\n", "");
+          }
+          // check if item.function exists
+
+          if ("function" in item) {
+            span.textContent = JSON.stringify(item.function);
+          } else {
+            span.textContent = JSON.stringify(item);
+          }
+
+          // Assign color based on the role
+          switch (item.role) {
+            case "user":
+              span.style.color = "yellow";
+              break;
+            case "assistant":
+              span.style.color = "white";
+              break;
+            case "system":
+              span.style.color = "red";
+              break;
+            case "function":
+              span.style.color = "turquoise";
+              break;
+            default:
+              span.style.color = "magenta"; // Default color
+          }
+
+          // Append the span to the div
+          responseDiv.appendChild(span);
+          responseDiv.appendChild(document.createElement("br")); // Add a line break for readability
+        });
+      }
+      async function sendRequest(action) {
+        get_data_from_elements();
+        
+        // Get the selected target (Assistant or ChatGPT) from the dropdown
+        const selectedTarget = document.getElementById("target_selection").value;
+        
+        let route;
+        
+        // Determine route based on the selection
+        if (selectedTarget === "assistant") {
+          route = `api/assistant/${action}`;
+        } else if (selectedTarget === "chatgpt") {
+          route = `api/chatgpt/${action}`;
+        }
+      
+        console.log(`sending data: ${JSON.stringify(state)} to ${route}`);
+        let response = await fetch(`/${route}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(state),
+          mode: "cors",
+        });
+        let res = await response.json(); // we always get back {message, state}
+        console.log(`In UI response: ${JSON.stringify(res)}`);
+        await parse_response(route, res);
+      
+        return;
+      }
+      async function sendRequest(route) {
+        get_data_from_elements();
+            // Get the selected target (Assistant or ChatGPT) from the dropdown
+      
+        console.log(`sending data: ${JSON.stringify(state)} to ${route}`);
+        let response = await fetch(`/${route}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(state),
+          mode: "cors",
+        });
+        let res = await response.json(); // we always get back {message, state}
+        console.log(`In UI response: ${JSON.stringify(res)}`);
+        await parse_response(route, res);
+
+        return;
+      }
+      async function parse_response(route, res) {
+        console.log(
+          `In UI parse_response ${route} data =: ${JSON.stringify(res.state)}`
+        );
+        write_data_to_elements(res.state);
+        console.log(`Updated state:: ${JSON.stringify(state)}`);
+        console.log(`write to div: ${JSON.stringify(res.message)}`);
+        write_to_div(route, res.message);
+      }
+    </script>
+  </head>
+  <body>
+    <div class="card">
+      <div class="card-body">
+        <section class="part2">
+          <div class="container">
+            <div class="row" style="width: 70%">
+              <div class="col-sm-4">
+                <img
+                  alt=""
+                  class="resize-image left-side"
+                  id="image1"
+                  src="bridge.png"
+                  width="70"
+                  height="50"
+                />
+              </div>
+              <div class="col">
+                <h4 class="left-side-text">MIT Agent Function Caller</h4>
+              </div>
+            </div>
+          </div>
+        </section>
+        <div class="row mb-3">
+          <div class="col">
+            <label for="target_selection">Send to:</label>
+            <select id="target_selection" class="form-select" onchange="toggleAssistantButtons()">
+              <option value="chatgpt">ChatGPT</option>
+              <option value="assistant">Assistant</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Assistant-specific buttons -->
+        <div id="assistant-buttons" style="display:none;">
+          <div class="container mt-5"></div>
+          <div class="row mb-3">
+            <div class="col">
+              <button
+                class="btn btn-primary mr-1"
+                type="submit"
+                onclick="sendRequest('api/assistant')"
+              >
+                Create Assistant with Name and Tools
+              </button>
+            </div>
+              <div class="col">
+                <input
+                  type="text"
+                  id="assistant_name"
+                  name="assistant_name"
+                  value="Test001"
+                />
+              </div>
+            
+              <div class="col">
+                <input
+                  type="text"
+                  id="assistant_id"
+                  name="assistant_id"
+                  value="Assistant ID"
+                />
+              </div>
+            </div>
+            <div class="row mb-3">
+              <div class = "col">
+                <button
+                  class="btn btn-primary mr-1"
+                  type="submit"
+                  onclick="sendRequest('api/thread')"
+                >
+                  Create New Context Thread
+                </button>
+              </div>
+              <div class = "col">
+                 <input type="text" id="thread_id" name="thread_id" value="thread_id" />
+              </div>
+              <div class = "col">
+             </div>
+            </div>
+          </div>  
+         
+          
+          <div class = "row mb-3">
+            <div class = "col">
+              <button
+              class="btn btn-primary mr-1"
+              type="submit"
+              onclick="sendRequest('api/prompt')"
+            >Input User Prompt</button>
+          </div>
+          <div class = "col">
+            <input
+              type="text"
+              id="user_message"
+              name="user_message"
+              value="User Message"
+            />
+          </div>
+          <div class = "col"></div> 
+          </div>  
+            <div class = "row mb-3">
+              <div class = "col">
+                <button
+                  class="btn btn-primary mr-1"
+                  type="submit"
+                  onclick="sendRequest('api/openai-call')"
+                >
+                  Run Agent
+                </button>
+              </div>
+              <div class = "col">
+                <input type="text" id="run_id" name="run_id" value="run_id" />
+              </div>
+              <div class = "col">
+              </div>
+        </div>
+
+        <div class="container mt-5">
+          <label for="response">Agent Context Window:</label>
+          <div id="response" class="border p-3" style="height: 200px; overflow:auto;"></div>
+        <label for="response">JSON Output:</label>
+        <div id="json_output"class="border p-3" style="height: 200px; overflow:auto;"></div>
+        <label for="response">Functions:</label>
+        <div id="functions" class="border p-3" style="height: 200px; overflow:auto;"></div>
+      </div>
+    </div>
+  </body>
+  <script>
+    function toggleAssistantButtons() {
+      const selectedTarget = document.getElementById("target_selection").value;
+      const assistantButtons = document.getElementById("assistant-buttons");
+    
+      if (selectedTarget === "assistant") {
+        assistantButtons.style.display = "block"; // Show Assistant buttons
+      } else {
+        assistantButtons.style.display = "none"; // Hide Assistant buttons
+      }
+    }
+    
+    // Set the default view when the page loads
+    document.addEventListener("DOMContentLoaded", function () {
+      toggleAssistantButtons(); // Initialize with ChatGPT as the default
+    });
+  </script>
+</html>
