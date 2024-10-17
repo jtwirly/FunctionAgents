@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import bodyParser from 'body-parser';
 import { OpenAI} from 'openai';
@@ -78,68 +80,77 @@ app.post('/api/execute-function', async (req, res) => {
 });
 
 // Example to interact with OpenAI API and get function descriptions
+// Updated
+// This route handles interactions with the OpenAI API
 app.post('/api/openai-call', async (req, res) => {
+    // Extract the user's message from the request body
     const { user_message } = req.body;
 
+    // Get all available functions from the functions directory
     const functions = await getFunctions();
+    // Extract the details of each function for use with the OpenAI API
     const availableFunctions = Object.values(functions).map(fn => fn.details);
-    console.log(`availableFunctions: ${JSON.stringify(availableFunctions)}`);
+    
+    // Initialize the conversation with a system message and the user's input
     let messages = [
-        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'system', content: 'You are a helpful assistant capable of storing and analyzing memories. Use the provided functions to assist the user.' },
         { role: 'user', content: user_message }
     ];
+
     try {
-        // Make OpenAI API call
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: messages,
-            tools: availableFunctions
-        });
-       
-       // Extract the arguments for get_delivery_date
-// Note this code assumes we have already determined that the model generated a function call. See below for a more production ready example that shows how to check if the model generated a function call
-        const toolCall = response.choices[0].message.tool_calls[0];
+        let finalResult = null;
+        let stepCount = 0;
+        const maxSteps = 3; // Limit the number of function calls to prevent infinite loops
 
-// Extract the arguments for get_delivery_date
-// Note this code assumes we have already determined that the model generated a function call. 
-        if (toolCall) {
-            const functionName = toolCall.function.name;
-            const parameters = JSON.parse(toolCall.function.arguments);
-
-            const result = await functions[functionName].execute(...Object.values(parameters));
-// note that we need to respond with the function call result to the model quoting the tool_call_id
-            const function_call_result_message = {
-                role: "tool",
-                content: JSON.stringify({
-                    result: result
-                }),
-                tool_call_id: response.choices[0].message.tool_calls[0].id
-            };
-            // add to the end of the messages array to send the function call result back to the model
-            messages.push(response.choices[0].message);
-            messages.push(function_call_result_message);
-            const completion_payload = {
-                model: "gpt-4o",
+        // Continue the conversation until we reach a final result or hit the max steps
+        while (stepCount < maxSteps) {
+            // Make a request to the OpenAI API
+            const response = await openai.chat.completions.create({
+                model: 'gpt-4o',
                 messages: messages,
-            };
-            // Call the OpenAI API's chat completions endpoint to send the tool call result back to the model
-            const final_response = await openai.chat.completions.create({
-                model: completion_payload.model,
-                messages: completion_payload.messages
+                tools: availableFunctions
             });
-            // Extract the output from the final response
-            let output = final_response.choices[0].message.content 
 
+            // Get the assistant's response
+            const assistantMessage = response.choices[0].message;
+            // Add the assistant's message to the conversation history
+            messages.push(assistantMessage);
 
-            res.json({ message:output, state: state });
-        } else {
-            res.json({ message: 'No function call detected.' });
+            // If the assistant didn't call a function, we're done
+            if (!assistantMessage.tool_calls) {
+                finalResult = assistantMessage.content;
+                break;
+            }
+
+            // Process each function call made by the assistant
+            for (const toolCall of assistantMessage.tool_calls) {
+                const functionName = toolCall.function.name;
+                const parameters = JSON.parse(toolCall.function.arguments);
+
+                // Execute the called function with the provided parameters
+                const result = await functions[functionName].execute(...Object.values(parameters));
+
+                // Add the function result to the conversation history
+                messages.push({
+                    role: "tool",
+                    content: JSON.stringify(result),
+                    tool_call_id: toolCall.id
+                });
+
+                finalResult = result;
+            }
+
+            stepCount++;
         }
 
+        // Send the final result back to the client
+        res.json({ message: `Final result: ${JSON.stringify(finalResult)}`, state: state });
     } catch (error) {
+        // If an error occurs, send it back to the client
         res.status(500).json({ error: 'OpenAI API failed', details: error.message });
     }
 });
+
 app.post('/api/prompt', async (req, res) => {
     // just update the state with the new prompt
     state = req.body;
